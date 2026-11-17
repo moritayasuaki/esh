@@ -1,0 +1,10 @@
+; Both branches contribute to the static effect bound.
+(script
+  (cap workspace (read write))
+  (returns (Result Unit FsError))
+  (effects (fs.read workspace) (fs.write workspace))
+
+  (let-ok mode (fs.read-text workspace (path "mode.txt"))
+    (if (text.eq mode "write")
+      (fs.write-text workspace (path "result.txt") "enabled\n")
+      (ok unit))))

@@ -1,0 +1,10 @@
+; Source is read once. A failed read skips the write.
+(script
+  (cap input (read write) infer)
+  (cap output (write))
+  (returns (Result Unit FsError))
+  (effects (fs.read input) (fs.write output))
+
+  (let-ok content (fs.read-text _ (path "source.txt"))
+    (fs.write-text output (path "copy.txt")
+      (text.concat "Copied by esh\n" content))))

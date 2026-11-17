@@ -1,0 +1,10 @@
+name = "esh"
+version = "0.1.0"
+defaultTargets = ["esh-core", "Esh.Proofs"]
+
+[[lean_lib]]
+name = "Esh"
+
+[[lean_exe]]
+name = "esh-core"
+root = "Main"

@@ -1,0 +1,13 @@
+.lake/
+__pycache__/
+*.pyc
+.DS_Store
+.env
+.env.*
+.local/
+artifacts/
+reports/
+*.log
+.codex/
+.agents/
+AGENTS.md

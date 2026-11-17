@@ -1,0 +1,5 @@
+; This is an intentional type error. Neither candidate takes priority.
+(script
+  (cap first (read) infer)
+  (cap second (read write) infer)
+  (fs.read-text _ (path "source.txt")))
