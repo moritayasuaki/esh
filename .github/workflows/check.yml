@@ -19,7 +19,10 @@ jobs:
       - run: cargo +1.98.1 test --locked --workspace
       - run: cargo +1.98.1 clippy --locked --workspace --all-targets -- -D warnings
       - run: cargo +1.98.1 check --locked -p esh-web --target wasm32-unknown-unknown
-      - run: shasum -a 256 -c verification/extraction.sha256
+      - name: Check the extraction fingerprint with esh
+        run: scripts/extract-policy.sh --check-fingerprint
+        env:
+          RUSTUP_TOOLCHAIN: 1.98.1
 
   lean:
     runs-on: ubuntu-latest

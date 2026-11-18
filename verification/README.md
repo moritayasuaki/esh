@@ -40,18 +40,38 @@ and set `CHARON_BIN` and `AENEAS_BIN` to the resulting binaries.
 From the repository root:
 
 ```sh
+scripts/extract-policy.sh --check-fingerprint
 scripts/extract-policy.sh --check
 scripts/check-proofs.sh
 ```
 
-`--check` generates into a disposable directory and compares both generated Lean
-files byte-for-byte. It does not alter the proof inputs. The extraction fingerprint
-records the Rust source, policy manifest, tool pins, and generated files. Regular
-CI checks that fingerprint and replays Lean proofs; full tool regeneration is
-performed by the extraction command. After an intentional
-policy change, run `scripts/extract-policy.sh --write`, inspect the generated
-diff, and update proofs as needed. Extraction without a successful proof build
-is not verification.
+`--check-fingerprint` runs on Linux and macOS in CI. It needs Cargo and
+`shasum`. The launcher computes SHA-256 for the Rust policy source, its Cargo
+manifest, the tool pins, and both Lean outputs. The
+[esh checker](../scripts/extraction/check-fingerprint.esh) reads the freshly
+computed and tracked manifests with read-only grants. It compares the complete
+text, so removing a valid entry also fails. The standard `shasum -a 256 -c`
+command independently verifies the recorded digests. The Python/Lean reference
+suite runs the same esh checker on matching and incomplete manifests.
+
+`--check` also runs Charon and Aeneas in a temporary directory and uses
+`diff -ru` to compare the whole generated directory, including unexpected files.
+Both check modes leave tracked files untouched.
+
+After an intentional policy change, run `scripts/extract-policy.sh --write`.
+The [esh installer](../scripts/extraction/install.esh) reads all staged inputs
+and checks the set of generated filenames before the first write. Its only write
+grant is rooted at `verification/`. It replaces or creates
+`EshRust/Generated/Types.lean`, then `EshRust/Generated/Funs.lean`, then
+`extraction.sha256`. The launcher checks the installed fingerprint before
+reporting success. If a later write fails, the esh report lists completed
+changes. Earlier replacements remain on disk. Inspect the report, correct the
+failure and rerun the command. Review the diff and replay the Lean proofs.
+
+To inspect the installer's paths and ordering in the browser, use
+`esh serve scripts/extraction/install.esh` after building the editor. The
+effect view covers the esh script. The shell launcher owns temporary-directory
+cleanup, external tool execution, hashing and the independent checks.
 
 Lake resolves dependencies from the committed manifest. On dependency updates,
 use `MATHLIB_NO_CACHE_ON_UPDATE=1` to avoid automatically downloading all of

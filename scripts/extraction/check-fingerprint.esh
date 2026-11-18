@@ -1,0 +1,14 @@
+; Check the five expected digest lines, including their repository-relative paths.
+(script
+  (cap staged (read))
+  (cap tracked (read))
+  (returns (Result Unit FsError))
+  (effects (fs.read staged) (fs.read tracked))
+  (do
+    (let manifest (path "extraction.sha256"))
+    (let-ok expected (fs.read-text tracked manifest))
+    (let-ok actual (fs.read-text staged manifest))
+    (let matches (text.eq expected actual))
+    (if matches
+      (do (ok unit))
+      (do (error Unit "The tracked extraction.sha256 differs from the freshly computed fingerprint.")))))

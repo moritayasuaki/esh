@@ -1,0 +1,35 @@
+; Read all inputs first. Publish the fingerprint after both Lean files.
+(script
+  (cap staged (read))
+  (cap tracked (write))
+  (requires
+    (regular-file staged "EshRust/Generated/Types.lean")
+    (regular-file staged "EshRust/Generated/Funs.lean")
+    (regular-file staged "extraction.sha256"))
+  (preserves (target staged "."))
+  (returns (Result Unit FsError))
+  (effects (fs.read staged) (fs.write tracked))
+  (def expect-generated-file
+    (params (name Text))
+    (returns (Result Unit FsError))
+    (effects)
+    (body
+      (do
+        (let is-types (text.eq name "Types.lean"))
+        (let expected (if is-types true (do (text.eq name "Funs.lean"))))
+        (if expected
+          (do (ok unit))
+          (do (error Unit "Unexpected file in the generated Lean directory. Review the output set before installing."))))))
+  (do
+    (let generated (path "EshRust/Generated"))
+    (let-ok entries (fs.list staged generated))
+    (let-ok checked (list.map-ok expect-generated-file entries))
+    (let types-path (path "EshRust/Generated/Types.lean"))
+    (let functions-path (path "EshRust/Generated/Funs.lean"))
+    (let manifest-path (path "extraction.sha256"))
+    (let-ok types (fs.read-bytes staged types-path))
+    (let-ok functions (fs.read-bytes staged functions-path))
+    (let-ok manifest (fs.read-text staged manifest-path))
+    (let-ok wrote-types (fs.write-bytes tracked types-path types))
+    (let-ok wrote-functions (fs.write-bytes tracked functions-path functions))
+    (fs.write-text tracked manifest-path manifest)))

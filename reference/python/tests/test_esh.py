@@ -136,6 +136,23 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual((self.output / "copy.txt").read_text(), "Copied by esh\nhello\n")
         self.assertEqual(report["traceLength"], 2)
 
+    def test_repository_fingerprint_check(self):
+        entry = esh.PROJECT / "scripts/extraction/check-fingerprint.esh"
+        manifest = (esh.PROJECT / "verification/extraction.sha256").read_bytes()
+        (self.input / "extraction.sha256").write_bytes(manifest)
+        recorded = self.output / "extraction.sha256"
+        grants = [["staged", "read", str(self.input)], ["tracked", "read", str(self.output)]]
+        for label, contents, expected in (
+            ("matching", manifest, 0),
+            ("omitted entry", b"".join(manifest.splitlines(keepends=True)[:-1]), 1),
+        ):
+            with self.subTest(label=label):
+                recorded.write_bytes(contents)
+                code, report = esh.execute(entry, grants, 8388608)
+                self.assertEqual(code, expected, report)
+                self.assertEqual(report["traceLength"], 2)
+                self.assertEqual(recorded.read_bytes(), contents)
+
     def test_error_short_circuits_write(self):
         source = (esh.PROJECT / "examples" / "copy.esh").read_text()
         code, report = self.run_source(source)

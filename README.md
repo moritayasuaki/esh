@@ -118,6 +118,15 @@ See [syntax](docs/prototype.md), [functions/modules](docs/functions.md),
 
 ## Proofs and limits
 
+The repository uses esh to check its own extraction fingerprint in CI and to
+install regenerated proof inputs. Try the read-only check on your checkout or
+inspect the three write targets before regenerating anything.
+
+```sh
+scripts/extract-policy.sh --check-fingerprint
+cargo run --locked -p esh-cli -- check scripts/extraction/install.esh
+```
+
 ```sh
 scripts/extract-policy.sh --check  # requires the pinned Charon/Aeneas tools
 scripts/check-proofs.sh           # checks the extracted Rust proofs
