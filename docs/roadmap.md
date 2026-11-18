@@ -15,7 +15,7 @@ The original Lean kernel remains a separately checked reference.
    state, Rust/Wasm rendering, and Aeneas→Lean proofs for selected policy loops
    and decisions. The [assurance matrix](assurance.md) is authoritative.
 4. **Remaining: full Rust correspondence and filesystem refinement.** Prove the
-   source compiler/interpreter, complete path validation, update state evolution,
+   source compiler/interpreter, descriptor traversal, update state evolution,
    alias/preservation checks, and review projection. Connect OS assumptions to
    the command implementation. Existing kernel theorems are not inherited by a
    rewrite without a correspondence proof.

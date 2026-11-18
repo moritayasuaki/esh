@@ -12,7 +12,8 @@ Aeneas into `verification/EshRust/Generated/`. Handwritten proofs import those
 actual generated definitions. `scripts/extract-policy.sh --check` re-extracts
 from current source and fails on a difference. Generated files are not hand-edited.
 
-`verification/EshRust/PolicyProofs.lean` establishes:
+`verification/EshRust/PolicyProofs.lean`, `PathProofs.lean`, and
+`ReviewProofs.lean` establish:
 
 - The mandatory preflight scan terminates without indexing/overflow failure;
   accepting it implies every supplied check is `Passed`.
@@ -26,11 +27,16 @@ from current source and fails on a difference. Generated files are not hand-edit
   and accepts a review of the current revision.
 - The component-byte scan terminates and, on acceptance, excludes separators,
   backslashes, DEL, and ASCII control bytes.
+- The full relative-path validator terminates without indexing, slicing, or
+  arithmetic failure. Every accepted path is the root marker `.` or a
+  sequence of safe components separated by slashes. Components are nonempty
+  and cannot be `.` or `..`. The proof does not yet show that every syntactically
+  valid path is accepted. Operating-system path resolution is a separate property.
 
 These are statements about the extracted implementations, not replacement
 functions written only for proof. They do not establish that every caller passes
-truthful input to the guards. The full relative-path validator and filesystem
-identity/protection computation have tests but are not wholly proved yet.
+truthful input to the guards. Filesystem traversal and identity/protection
+computation have tests but are not wholly proved yet.
 
 `EshRust/Audit.lean` prints theorem axiom dependencies. The audited statements use
 Lean's standard `propext`, `Classical.choice`, and `Quot.sound`; no project-specific
@@ -43,7 +49,7 @@ compiler/runtime that executes the original code.
 | Component/property | Current evidence | Remaining formal obligation |
 | --- | --- | --- |
 | Pure admission and permission decisions | Extracted Rust + Lean theorems | Connect guard premises to complete host executions. |
-| Preflight scan and component-byte scan | Termination and acceptance theorems | Complete path splitting/traversal and observation correctness. |
+| Preflight scan and relative-path validation | Termination and acceptance-safety theorems, including splitting and component checks | Connect accepted syntax to descriptor traversal and filesystem observation correctness. |
 | Editor revision policy | Extracted Rust + Lean; stale-result tests | Rendering/source-span correspondence and projection soundness. |
 | Parser, type/effect inference, modules, captures | Rust regression tests | Source soundness, generalization, elaboration correspondence. |
 | Sequential interpreter and finite collection operations | Rust execution tests | Preservation/progress, ordered traces and cancellation prefixes for this Rust interpreter. |
