@@ -5,6 +5,7 @@ metadata. It does not execute script computations or filesystem primitives.
 """
 from dataclasses import dataclass, field
 from pathlib import Path
+import errno
 import json
 import os
 import stat
@@ -473,7 +474,13 @@ class Engine:
                 if len(raw) > MAX_SOURCE:
                     raise Diagnostic(origin, "source-limit", "Imported source exceeds 256 KiB.")
                 source = raw.decode("utf-8")
-            except (OSError, UnicodeError):
+            except OSError as error:
+                # Newer pathlib versions leave non-strict symlink loops for
+                # the eventual open to diagnose instead of raising in resolve.
+                if error.errno == errno.ELOOP:
+                    raise Diagnostic(origin, "import-path", "Cannot resolve the relative import path.") from None
+                raise Diagnostic(origin, "import-read", "Cannot read the imported UTF-8 source file.") from None
+            except UnicodeError:
                 raise Diagnostic(origin, "import-read", "Cannot read the imported UTF-8 source file.") from None
         name = self.display_path(path)
         self.source_texts[name] = source
