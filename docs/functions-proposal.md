@@ -12,8 +12,8 @@ support. `Effect` parameters describe permission bounds; ordered computation
 structure remains separate. See [current syntax](functions.md) and
 [implementation decisions](functions-implementation-plan.md).
 
-The notes below retain the rationale and future design candidates. Restricted
-general iteration, dependent refinements, and the parallel runtime remain future work.
+The notes below retain the rationale and future design candidates. General
+iteration, dependent refinements, and the parallel runtime remain future work.
 Concurrency policy is accepted and is not reopened by this implementation. The
 language's commitments are recorded in [the design](design.md).
 

@@ -54,8 +54,8 @@ also remain explicit blocks.
 
 An `Err` at `let-ok` skips the rest of that block. The block must return
 `Result T FsError`. `let` does not propagate errors implicitly. Each binding's
-computation is evaluated once; instantiating a polymorphic value transforms its
-type annotations and stored code without evaluating that binding again.
+computation is evaluated once; static instantiation substitutes type, region, and effect parameters. The Rust
+runtime reuses the value without evaluating that binding again.
 
 ## Authority and captures
 
@@ -100,7 +100,7 @@ fixed by the environment or retained authority are generalized. An effectful
 value is a function. Captured capability regions remain fixed.
 
 `(effects E1 E2 (fs.read R))` is a union of permission bounds, preserving
-independent callback parameters. The kernel normalizes bounds in function
+independent callback parameters. The checker normalizes bounds in function
 types, so duplicates and permutations do not change those types. Computation
 structure and execution traces preserve order and repeated requests.
 
@@ -122,8 +122,8 @@ filesystem requests.
 
 `(Outcome Text)` is transparently equal to `(Result Text FsError)`. Alias
 parameters may also have Region and Effect kinds; Effect arguments use
-`(effects ...)`. Alias cycles are errors. Types are interned in a shared table
-for kernel input and review metadata; references cannot form cycles.
+`(effects ...)`. Alias cycles are errors. Rust types share substructures. Review metadata interns subterms in a table
+whose references point only to earlier entries.
 
 Modules use `(module name ...)` with imports, aliases, and function definitions.
 They cannot acquire ambient host capabilities or run initializers. Import with
@@ -132,9 +132,9 @@ There is no implicit re-export or package resolution. A script may additionally
 declare capabilities and contains one executable body.
 
 Imports are resolved relative to their importer. `--project-root DIR` selects
-their boundary; the default is the entry file's parent. Canonical targets must
-remain inside it. Descriptor-relative reads reject links substituted during
-traversal and reject special files. This does not prove atomic snapshots or
+their boundary; the default is the entry file's parent. The entry must
+remain inside it. Descriptor-relative import reads reject symlinks and special
+files, including links whose targets would otherwise stay inside the root. This does not prove atomic snapshots or
 confinement against relocating already-open directories. Source bytes are
 retained for the check/run, so execution does not reload a changed module.
 
@@ -142,10 +142,11 @@ The current limits are 256 KiB per source file, 50,000 parsed forms, 128 levels
 of source nesting, and 128 files/4 MiB per module graph. These are implementation
 limits, not the eventual language's semantic limits.
 
-`serve --file script.esh [--project-root DIR]` supplies import context to the
-editor. A buffer without a location supports standalone checking; imports
-require a location. Imported sources are reviewable but read-only. The editor
-does not write project files or execute scripts.
+`serve script.esh [--project-root DIR] [--state FILE]` supplies import context
+and an optional initial-state specification to the Rust/Wasm editor. Imported
+sources are reviewable but read-only snapshots. Adding a new import requires
+loading an updated project snapshot. The editor does not write project files
+or execute scripts.
 
 See [assurance boundaries](assurance.md) for what the Lean proofs establish and
 which source-level properties still depend on the frontend.
