@@ -65,6 +65,13 @@ Capability names do not imply physical separation. The runtime compares opened
 filesystem identities, ancestry, and unresolved path suffixes. It checks access
 through another root too. Protection is conservative for the same inode through
 hard links. Path components and symlinks are checked independently of this rule.
+Ancestry includes parents above the configured root, so a grant starting deep
+inside a protected subtree cannot bypass protection. The host refreshes that
+metadata for each observation, following at most 1,024 parent links. Failure to
+establish ancestry prevents the mutation; parent directory contents are not
+listed or exposed to the script. This relies on the OS namespace and identity
+model: aliases through virtual filesystems or mount arrangements that hide
+original ancestry are not covered by the current filesystem model.
 Replacing a protected directory's ancestor cannot be used to bypass protection:
 this command set only replaces/removes regular files and does not rename trees.
 

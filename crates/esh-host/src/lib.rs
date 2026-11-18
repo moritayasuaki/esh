@@ -240,6 +240,43 @@ impl Host {
         Ok(fd)
     }
 
+    /// Include ancestors above the capability root: a different grant may start
+    /// several levels inside a protected directory. These identifiers are host
+    /// bookkeeping, never script-visible directory contents or extra authority.
+    /// Resolve them afresh so an opened root moved since preflight is checked in
+    /// its current namespace. Unknown ancestry prevents mutation admission.
+    fn directory_ancestors(directory: &OwnedFd) -> Result<Vec<FileIdentity>, HostError> {
+        let mut current = directory.try_clone()?;
+        let mut current_id = identity(&fs::fstat(&current)?);
+        let mut ancestors = vec![current_id];
+        for _ in 0..1024 {
+            let parent = fs::openat(
+                &current,
+                "..",
+                OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+                Mode::empty(),
+            )?;
+            let parent_id = identity(&fs::fstat(&parent)?);
+            if parent_id == current_id {
+                ancestors.reverse();
+                return Ok(ancestors);
+            }
+            if ancestors.contains(&parent_id) {
+                return Err(HostError::new(
+                    "check-incomplete",
+                    "Directory ancestry is cyclic or changed during observation.",
+                ));
+            }
+            ancestors.push(parent_id);
+            current = parent;
+            current_id = parent_id;
+        }
+        Err(HostError::new(
+            "check-incomplete",
+            "Directory ancestry exceeds the observation limit.",
+        ))
+    }
+
     /// Bounded, descriptor-relative observation used by mandatory contracts.
     /// Metadata and contents describe this observation only, not a snapshot.
     pub fn observe(
@@ -282,7 +319,7 @@ impl Host {
             .ok_or_else(|| HostError::new("permission", "Unknown root."))?;
         let mut directory = root.try_clone()?;
         let root_id = identity(&fs::fstat(&directory)?);
-        let mut ancestors = vec![root_id];
+        let mut ancestors = Self::directory_ancestors(&directory)?;
         if path == "." {
             return Ok(Observation {
                 kind: EntryKind::Directory,

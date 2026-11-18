@@ -160,6 +160,141 @@ fn preservation_covers_subtrees_through_another_root() {
         "original"
     );
 }
+
+#[test]
+fn preservation_covers_a_root_deep_inside_the_protected_subtree() {
+    let dir = tempdir().unwrap();
+    let nested = dir.path().join("protected/nested/deeper");
+    fs::create_dir_all(&nested).unwrap();
+    fs::write(nested.join("file"), "original").unwrap();
+    let p = program(
+        r#"(script (cap root (read)) (cap alias (write))
+      (preserves (target root "protected"))
+      (do (let p (path "file")) (fs.write-text alias p "changed")))"#,
+    );
+    let h = Host::new(
+        &[
+            Grant {
+                name: "root".into(),
+                rights: 1,
+                directory: dir.path().into(),
+            },
+            Grant {
+                name: "alias".into(),
+                rights: 2,
+                directory: nested.clone(),
+            },
+        ],
+        1024,
+    )
+    .unwrap();
+    let mut host = UpdateHost::new(h, vec![], CheckLimits::default());
+    assert_eq!(
+        Runtime::new(&mut host, Limits::default())
+            .run(&p)
+            .unwrap_err()
+            .code,
+        "preserves"
+    );
+    assert_eq!(fs::read_to_string(nested.join("file")).unwrap(), "original");
+    assert!(host.completed.is_empty());
+}
+
+#[test]
+fn preservation_rechecks_ancestry_of_a_relocated_open_root() {
+    use esh_host::{Operation, Request};
+    use esh_runtime::Backend;
+    let dir = tempdir().unwrap();
+    fs::create_dir(dir.path().join("protected")).unwrap();
+    fs::create_dir(dir.path().join("outside")).unwrap();
+    fs::write(dir.path().join("outside/file"), "original").unwrap();
+    let p = program(
+        r#"(script (cap root (read)) (cap alias (write))
+      (preserves (target root "protected"))
+      (do (let p (path "file")) (fs.write-text alias p "changed")))"#,
+    );
+    let h = Host::new(
+        &[
+            Grant {
+                name: "root".into(),
+                rights: 1,
+                directory: dir.path().into(),
+            },
+            Grant {
+                name: "alias".into(),
+                rights: 2,
+                directory: dir.path().join("outside"),
+            },
+        ],
+        1024,
+    )
+    .unwrap();
+    let mut host = UpdateHost::new(h, vec![], CheckLimits::default());
+    host.begin(&p).unwrap();
+    fs::rename(
+        dir.path().join("outside"),
+        dir.path().join("protected/moved"),
+    )
+    .unwrap();
+    let request = Request {
+        operation: Operation::Write,
+        region: "alias".into(),
+        path: "file".into(),
+        contents: Some("changed".into()),
+        bytes: None,
+    };
+    assert_eq!(host.request(&request).unwrap_err().code, "preserves");
+    assert!(host.halted());
+    assert!(host.completed.is_empty());
+    assert_eq!(
+        fs::read_to_string(dir.path().join("protected/moved/file")).unwrap(),
+        "original"
+    );
+}
+
+#[test]
+fn preservation_allows_changes_under_an_unrelated_root() {
+    let dir = tempdir().unwrap();
+    fs::create_dir(dir.path().join("protected")).unwrap();
+    fs::create_dir(dir.path().join("other")).unwrap();
+    fs::write(dir.path().join("protected/file"), "original").unwrap();
+    let p = program(
+        r#"(script (cap root (read)) (cap alias (write))
+      (preserves (target root "protected"))
+      (do (let p (path "file")) (fs.write-text alias p "changed")))"#,
+    );
+    let h = Host::new(
+        &[
+            Grant {
+                name: "root".into(),
+                rights: 1,
+                directory: dir.path().into(),
+            },
+            Grant {
+                name: "alias".into(),
+                rights: 2,
+                directory: dir.path().join("other"),
+            },
+        ],
+        1024,
+    )
+    .unwrap();
+    let mut host = UpdateHost::new(h, vec![], CheckLimits::default());
+    assert!(!Runtime::new(&mut host, Limits::default())
+        .run(&p)
+        .unwrap()
+        .failed());
+    assert_eq!(host.completed.len(), 1);
+    assert_eq!(
+        fs::read_to_string(dir.path().join("other/file")).unwrap(),
+        "changed"
+    );
+    assert_eq!(
+        fs::read_to_string(dir.path().join("protected/file")).unwrap(),
+        "original"
+    );
+}
+
 #[test]
 fn map_ok_stops_after_the_first_error_and_keeps_declaration_order() {
     let dir = tempdir().unwrap();
