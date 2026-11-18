@@ -15,7 +15,8 @@ import subprocess
 import sys
 from esh_language import Diagnostic, elaborate
 
-PROJECT = Path(__file__).resolve().parent
+REFERENCE = Path(__file__).resolve().parent
+PROJECT = REFERENCE.parent.parent
 CORE = PROJECT / ".lake" / "build" / "bin" / "esh-core"
 MAX_SOURCE = 262144
 PERMISSIONS = {"read", "write", "mkdir", "remove"}
@@ -298,7 +299,7 @@ def serve(port: int, file: Path | None = None, project_root: Path | None = None)
             if not self.valid_host():
                 return self.send(403, b"Forbidden", "text/plain")
             if self.path == "/":
-                return self.send(200, (PROJECT / "ui" / "index.html").read_bytes(), "text/html; charset=utf-8")
+                return self.send(200, (REFERENCE / "ui" / "index.html").read_bytes(), "text/html; charset=utf-8")
             if self.path == "/example":
                 return self.send(200, (file or PROJECT / "examples" / "copy.esh").read_bytes(), "text/plain; charset=utf-8")
             self.send(404, b"Not found", "text/plain")

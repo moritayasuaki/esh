@@ -1,72 +1,108 @@
-# Assurance boundaries
+# Assurance and proof coverage
 
-This prototype verifies a small executable kernel. It does not verify the entire frontend, operating system, host adapter, or review interface.
+The Rust application is executable and tested, but **the request for a fully
+proved Rust language/runtime/editor is not complete**. This document separates
+source-linked proofs from tests, models, and assumptions. A successful build or
+a static review is not a blanket safety certificate.
 
-## What Lean checks
+## Source-linked Rust proofs
 
-`Esh/Functions.lean` defines intrinsically typed values, closures, environments, and computations. Variables, arguments, results, and computation bounds are indices. A closure contains a typed body and only its selected environment values. The kernel has no untyped fallback value.
+`crates/esh-policy/src/lib.rs` is extracted by pinned Charon and translated by
+Aeneas into `verification/EshRust/Generated/`. Handwritten proofs import those
+actual generated definitions. `scripts/extract-policy.sh --check` re-extracts
+from current source and fails on a difference. Generated files are not hand-edited.
 
-`esh_language.py` parses source, loads modules, infers schemes, resolves captures, and produces a shared typed representation. `Esh/FunctionBridge.lean` independently checks that representation before execution, including unused function bodies with symbolic type/region/effect parameters. It checks applications, capability restriction, declared function bounds, and the script bound. Shared type references must refer to earlier entries.
+`verification/EshRust/PolicyProofs.lean` establishes:
 
-Primitive requests still use `Program` from `Esh/Core.lean` and the real request bridge. Every request requires evidence of authorization. Higher-order evaluation returns an indexed `Execution` carrying the result, emitted trace, and proofs of bound and policy membership. Composition appends traces; normalization applies to permission bounds, not to execution traces. Proofs are checked by Lean and erased during compilation.
+- The mandatory preflight scan terminates without indexing/overflow failure;
+  accepting it implies every supplied check is `Passed`.
+- Mutation admission requires passed initial checks, passed rechecks, and no
+  reported preservation conflict.
+- Reporting success requires body success and passed postconditions.
+- Permission bits correspond to read/write/mkdir/remove; mask inclusion rejects
+  high bits and requires every requested bit to be present.
+- The extracted editor state machine advances revisions without wrapping,
+  invalidates reviews on edits, rejects stale results without changing state,
+  and accepts a review of the current revision.
+- The component-byte scan terminates and, on acceptance, excludes separators,
+  backslashes, DEL, and ASCII control bytes.
 
-The public assurance entry points include:
+These are statements about the extracted implementations, not replacement
+functions written only for proof. They do not establish that every caller passes
+truthful input to the guards. The full relative-path validator and filesystem
+identity/protection computation have tests but are not wholly proved yet.
 
-- `Functions.execution_effect_sound`: completed request traces are within the static bound.
-- `Functions.execution_authorized`: completed request traces are within the supplied policy.
-- `Functions.pure_trace_empty`: an empty effect bound produces an empty request trace.
-- `Functions.append_preserves_trace`: composition retains ordered, repeated trace entries.
-- `Functions.subst_included`: effect substitution preserves inclusion.
-- `Functions.substitution_keeps_capability`: substituting a value leaves a concrete capability's region and rights unchanged.
-- `Functions.mem_normalize`: permission-bound normalization preserves membership.
-- `restrict_no_amplification` and `restrict_same_region`: capability restriction cannot add rights or change the region.
+`EshRust/Audit.lean` prints theorem axiom dependencies. The audited statements use
+Lean's standard `propext`, `Classical.choice`, and `Quot.sound`; no project-specific
+axiom or admitted proof discharges them. The trusted chain still includes Lean's
+kernel, the extraction/translation tools, their library models, and the Rust
+compiler/runtime that executes the original code.
 
-Value substitution is a total, checked transformation of stored values and code;
-it does not run the original initializer. Unexpected type/context/bound mismatches
-are rejected rather than coerced unsafely. Closure application evaluates typed
-arguments and a typed body. The higher-order evaluator uses Lean `partial`
-definitions because application is not structural recursion. There is no exposed
-fuel cutoff, and no termination theorem is claimed for that interpreter. The
-frontend currently rejects recursive definition cycles. The statements above
-cover completed executions, not a formal correspondence theorem for every
-interpreter step or finite-prefix safety under divergence/cancellation. They also
-do not cover all observable events inside an OS handler.
+## Coverage matrix
 
-The original first-order expression/compiler proofs in `Esh/Core.lean` remain
-available as reference lemmas and underpin the primitive request machinery.
+| Component/property | Current evidence | Remaining formal obligation |
+| --- | --- | --- |
+| Pure admission and permission decisions | Extracted Rust + Lean theorems | Connect guard premises to complete host executions. |
+| Preflight scan and component-byte scan | Termination and acceptance theorems | Complete path splitting/traversal and observation correctness. |
+| Editor revision policy | Extracted Rust + Lean; stale-result tests | Rendering/source-span correspondence and projection soundness. |
+| Parser, type/effect inference, modules, captures | Rust regression tests | Source soundness, generalization, elaboration correspondence. |
+| Sequential interpreter and finite collection operations | Rust execution tests | Preservation/progress, ordered traces and cancellation prefixes for this Rust interpreter. |
+| Update state evolution and alias/subtree protection | Preflight, drift, alias, budget, and partial-failure tests | Refine identities/namespace changes to the environmental filesystem model. |
+| Static file-impact projection | Conservative unknowns and targeted regressions | Prove every possible relevant action is represented or explicitly unknown. |
+| POSIX adapter, SHA-256, Wasm/DOM, dependencies | Explicit trusted/tested boundaries | Appropriate implementation/refinement proofs where feasible. |
 
-`Esh/Model.lean` additionally checks read-after-write, last-write-wins, and frame laws for an abstract file-content store. Locations are resolved independently of region names, so the model does not infer non-aliasing from different names. These elementary laws are groundwork; they are not a refinement proof of the POSIX implementation.
+## Runtime enforcement
 
-## Trusted and unverified components
+The host independently checks declared capabilities against supplied grants, then
+checks each operation against that active subset and the script's checked effect bound. Automatic contract observations also require a matching read effect. Script paths are relative;
+descriptor traversal rejects symlinks and special files. Reads and values have
+size limits. Writes replace a regular-file directory entry with a prepared file;
+they do not mutate the contents of a different hard link. Removal targets regular
+files, not arbitrary directory trees.
 
-- Lean's kernel, compiler, runtime, and standard logical foundations.
-- The Python source parser, inference/generalization and capture-declaration rules, module visibility, elaboration's correspondence to source meaning, and diagnostic/source mapping. These have tests, not a complete formal soundness/completeness proof of the source frontend.
-- The JSON request bridge and Python syscall adapter.
-- The OS, filesystem, and the interpretation of opened directory descriptors.
-- The editor's rendering of the checker's report.
+Mandatory initial conditions precede all mutations. Rechecks run before each
+mutation; failed or unfinished checks stop execution. Protected directories cover
+their subtrees even through another capability root. The current implementation
+rechecks all retained conditions rather than relying on an unproved optimization.
+Observed postconditions must pass before success. Earlier successful mutations
+remain after a later failure; the report records them in order.
 
-An internal request is authorized relative to the script's declared policy. The host independently checks that actual grants cover those declarations before dispatching requests, then rechecks each request against the active grant subset. The executable does not mint access to an undeclared host root.
+This is conditional on no conflicting external changes to relevant contents or
+namespace during the update. Rechecking is not proof of isolation. An already
+opened directory can be relocated externally; descriptor identity and current
+path containment are different properties. OS-enforced exclusion/isolation,
+crash consistency, network filesystems, durability across power loss, rollback,
+and whole-program memory/time bounds are not claimed.
 
-The bridge validates host reply shapes before exposing typed values. Invalid replies become `Err` values. This validates representation, not the truth of data reported by the host.
+Permission effects cover operations/regions; they do not equate repeated writes,
+authorize reordering, or describe a callback's internal operation count. Runtime
+host responses are shape-checked before dependent values are used. That checks
+representation, not the truth of an untrusted backend's data.
 
-## Concrete host scope
+## Original Lean reference model
 
-The host uses directory descriptors and `O_NOFOLLOW` for script-path traversal. It refuses special-file reads and uses replacement writes. Tests exercise symlink rejection, path rejection, aliasing regions, hard links, permission checks, and failure propagation.
+The root `Esh/` files remain checked with the original toolchain. Their
+intrinsically typed execution certificates cover request bounds, authorization,
+pure traces, substitution, and preservation of repeated ordered requests.
+Abstract file-store laws include read-after-write and frame properties.
 
-Module loading has a separate designated project root. Canonical targets must
-remain inside it, and descriptor-relative reads reject replacement links and
-special files. The loaded source bytes are reused for execution. This is not an
-atomic snapshot of a concurrently changing project tree.
+Those theorems apply to the reference kernel, **not automatically to Rust**. The
+reference interpreter's evaluator uses `partial` definitions, and the abstract
+store is not a verified POSIX implementation. Its Python adapter/frontend and
+historical UI are isolated under `reference/python/` and excluded from the Rust
+application. [Historical details](../reference/lean-assurance.md) remain available.
 
-This is not a complete sandbox against adversarial concurrent changes to the directory namespace. In particular, an already opened descendant directory can be relocated by another process. Descriptor authority, current path containment, and physical inode aliasing are different properties. Stronger confinement needs an OS-specific design and a corresponding model.
-
-External mutation, disk errors, crashes, special filesystems, metadata preservation, and rollback across operations are outside the abstract store laws. A completed early write remains visible if a later operation fails. Temporary-file cleanup can itself fail. The current host is suitable for development experiments with explicit grants, not a claim of production isolation.
-
-## Rechecking
+## Reproduction
 
 ```sh
+cargo test --locked --workspace
+cargo clippy --locked --workspace --all-targets -- -D warnings
+scripts/extract-policy.sh --check
+scripts/check-proofs.sh
 lake build
-python3 -m unittest discover -s tests -v
+(cd reference/python && python3 -B -m unittest discover -s tests -v)
 ```
 
-`Esh/Proofs.lean` prints theorem axiom dependencies during the build. The project introduces no custom axioms or admitted proofs. Test success is recorded separately from proof coverage.
+[Verifier instructions](../verification/README.md) pin Aeneas, Charon, and the
+separate proof toolchain. Tests, proof checking, regeneration, and browser
+interaction checks are separate evidence and should be reported separately.

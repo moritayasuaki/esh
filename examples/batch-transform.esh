@@ -1,0 +1,26 @@
+; Prefix every UTF-8 file in inbox. Originals are protected.
+; Runtime names are checked before becoming paths; directories cause Err.
+(script
+  (import files "./lib/files.esh")
+  (cap workspace (read write))
+  (requires (directory workspace "inbox") (directory workspace "outbox"))
+  (preserves (target workspace "inbox"))
+  (returns (Result (List Unit) FsError))
+  (effects (fs.read workspace) (fs.write workspace))
+  (def prefix
+    (params text)
+    (body (text.concat "Processed by esh\n" text)))
+  (do
+    (let inbox (path "inbox"))
+    (let outbox (path "outbox"))
+    (let-ok names (fs.list workspace inbox))
+    (let process
+      (fn
+        (params name)
+        (captures workspace)
+        (body
+          (do
+            (let-ok source (path.join inbox name))
+            (let-ok destination (path.join outbox name))
+            (files.transform-text workspace source workspace destination prefix)))))
+    (list.map-ok process names)))

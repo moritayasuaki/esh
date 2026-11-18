@@ -1,0 +1,23 @@
+[package]
+name = "esh-cli"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "esh"
+path = "src/main.rs"
+
+[dependencies]
+esh-policy.workspace = true
+esh-syntax.workspace = true
+esh-lang.workspace = true
+esh-host.workspace = true
+esh-runtime.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tiny_http.workspace = true
+rustix.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

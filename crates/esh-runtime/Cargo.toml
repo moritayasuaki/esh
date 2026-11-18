@@ -1,0 +1,16 @@
+[package]
+name = "esh-runtime"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+esh-lang.workspace = true
+esh-host.workspace = true
+esh-policy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

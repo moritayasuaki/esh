@@ -1,0 +1,26 @@
+(module files
+  (def copy-bytes
+    (export)
+    (forall (S Region) (D Region))
+    (params (source (Cap S (read))) (from RelPath)
+            (destination (Cap D (write))) (to RelPath))
+    (returns (Result Unit FsError))
+    (effects (fs.read S) (fs.write D))
+    (body
+      (do
+        (let-ok bytes (fs.read-bytes source from))
+        (fs.write-bytes destination to bytes))))
+
+  (def transform-text
+    (export)
+    (forall (S Region) (D Region) (E Effect))
+    (params (source (Cap S (read))) (from RelPath)
+            (destination (Cap D (write))) (to RelPath)
+            (transform (Fn (Text) Text (effects E))))
+    (returns (Result Unit FsError))
+    (effects (fs.read S) E (fs.write D))
+    (body
+      (do
+        (let-ok original (fs.read-text source from))
+        (let updated (transform original))
+        (fs.write-text destination to updated)))))

@@ -6,7 +6,7 @@ esh targets the work commonly performed by shell and Python scripts, especially 
 
 Internal expressions are inferred where possible. Exported functions require type and effect annotations that act as checked public contracts. The prototype supports rank-1 polymorphism over value types, resource regions, and effects.
 
-The next language stage uses rank-1 polymorphism. A polymorphic definition may be instantiated independently at different call sites. A function received as an argument has one instantiation within that call; higher-rank argument types are deferred.
+The current function stage uses rank-1 polymorphism. A polymorphic definition may be instantiated independently at different call sites. A function received as an argument has one instantiation within that call; higher-rank argument types are deferred.
 
 Named types and shared representations are the first approach to keeping contracts compact. The function stage implements transparent, nonrecursive parameterized aliases and shared type tables. Repetition support will add a restricted `E*` operator to ordered behavior descriptions with verified rules; general user-written fixed-point expressions `mu` are deferred. Detailed iteration rules remain future work.
 
@@ -16,13 +16,13 @@ Effects describe a conservative upper bound on operations. Branches contribute t
 
 An `Effect` parameter ranges over permission bounds; `(effects E1 E2 (fs.read R))` is their union. Function types normalize duplicate and reordered bounds. This never authorizes reordering or eliminating execution steps. Callback ordering and multiplicity remain unknown from a nonempty permission contract alone. Unsupported inference constraints require annotations rather than guessed partitions or unrestricted authority.
 
-Contracts use two layers: an unconditional effect bound and more precise conditional guarantees. Conditions such as absence of specified interference may be declared even when unresolved, but the viewer must identify them as assumptions. They do not silently replace the unconditional bound. Using a type guarantee that depends on a condition requires evidence adequate for its scope; an unchecked assumption is not such evidence. The condition syntax, evidence mechanisms, and detailed composition rules remain to be designed.
+Contracts use two layers: an unconditional effect bound and more precise conditional guarantees. Conditions such as absence of specified interference may be declared even when unresolved, but the viewer must identify them as assumptions. They do not silently replace the unconditional bound. Using a type guarantee that depends on a condition requires evidence adequate for its scope; an unchecked assumption is not such evidence. The current filesystem contract syntax and explicit non-interference assumptions are specified in [update contracts](update-contracts.md). General dependent refinements and their evidence rules remain future work.
 
 Ordinary failures use `Result`. Success-path composition must expose where an error short-circuits later operations. General loops and recursion are allowed in the design. Potential computational nontermination is tracked with `div`; external blocking and waiting need separate treatment.
 
 ## Functions and modules
 
-Functions are first-class values: they may be passed as arguments and returned as results. Named and anonymous functions are included in the next stage. Function types describe effects of invoking the function; creating a closure is distinct from executing its body.
+Functions are first-class values: they may be passed as arguments and returned as results. Named and anonymous functions are implemented in the current stage. Function types describe effects of invoking the function; creating a closure is distinct from executing its body.
 
 Declarations use named fields: `def`, an optional `(export)` marker, `forall`, `params`, `returns`, `effects`, and `body`. Public contracts sit with their definitions. Private definitions may omit inferred annotations. Anonymous `fn` expressions use the same `params` and `body` fields and the applicable `captures` declaration. `(Fn (A) B (effects E))` denotes a one-argument function from `A` to `B` with invocation-effect bound `E`; quantified parameters distinguish `Type`, `Region`, and `Effect`.
 
@@ -52,7 +52,7 @@ Values are immutable by default. Repetition carries an explicit input state and 
 
 Evaluation order is explicit through `do`, `let`, and `let-ok`, including pure calls. A call's callee and arguments are values; intermediate calls receive bindings instead of being nested inside another call. A call may be the final computation of a block. Conditional tests are values, with computation blocks for their branches. A `do` block elaborates to lexical bindings and returns its final expression; a failed `let-ok` returns `Err` from that block and skips its remaining steps. Function creation remains distinct from invocation.
 
-The editor and viewer may collapse administrative bindings into readable presentations, while exposing their original evaluation order, dependencies, and source mapping. Presentation must not change evaluation order. This policy is accepted for the next language stage; the prototype has not yet implemented the new block syntax or its restrictions.
+The editor and viewer may collapse administrative bindings into readable presentations, while exposing their original evaluation order, dependencies, and source mapping. Presentation must not change evaluation order. The prototype implements the block syntax and sequencing restrictions.
 
 Concurrent execution uses explicit structured `parallel` blocks. Ordinary `do`/`let` remains sequential, each child preserves its own evaluation order, and every child is joined before its block exits. Individual `spawn`/`await` operations and detached background tasks are outside the initial scope.
 
@@ -80,10 +80,18 @@ An external command introduces an explicit unrestricted effect. Command declarat
 
 Type-establishing validation remains necessary before exposing a value at its expected type. Supplementary expectation checks run within an aggregate additional-cost budget. A detected violation is an error; an incomplete check alone does not stop execution. Checked, violated, and incomplete states remain distinguishable. Expensive global properties are explicit requirements rather than properties silently added to ordinary types.
 
+## Filesystem preconditions and updates
+
+Accepted model: an update receives a description of the initial filesystem conditions it relies on. Only the necessary part of the filesystem is described; unmentioned facts remain unknown. The supplied conditions and the script are used to check and display planned changes, preservation requirements, and successful postconditions.
+
+Declared mandatory initial conditions must be validated before the first update mutation. A mismatch or incomplete validation prevents the update from starting. This rule is separate from the existing budgeted supplementary-check policy. Validation itself has authority requirements, effects, and cost.
+
+The initial conditions do not establish absence of later interference. The Rust runtime implements requires/preserves/ensures, supplied state, mandatory preflight, rechecks, and conditional postcondition validation. Directory preservation includes subtrees and aliases. Later failures retain earlier changes. See [filesystem preconditions for updates](update-contracts.md) for exact semantics and remaining proof obligations.
+
 ## Review tools
 
-The viewer and executor share elaboration results. Review tools expose inferred types/effects, resolved capabilities, narrowed permissions, generated checks, branch conditions, state transitions, and links to source. Initial work focuses on static bounds. Concrete change planning and pre-execution diffs are future extensions.
+The viewer and executor share elaboration results. Review tools expose inferred types/effects, resolved capabilities, narrowed permissions, generated checks, branch conditions, state transitions, and links to source. The Rust/Wasm implementation displays static bounds, evaluation structure, concrete or unknown file targets, overwrite semantics, conditions, and declared update requirements. Editing invalidates previous reviews. Content diffs remain a separate extension.
 
 ## Open details
 
-Further inference completeness, restricted iteration rules, state-dependent refinements, conditional-contract syntax and proof rules, concrete parallel result types, cleanup contracts, recursion analysis, external-command contracts, and concrete filesystem refinement proofs remain future work. Functions, captures, rank-1 polymorphism, local imports, explicit sequencing, aliases, and their review views are implemented in the current stage. The two-layer-contract and concurrency policies are accepted design commitments whose runtime and proofs are still deferred. Scheduler implementation must preserve the accepted transition, capacity, and conditional-fairness rules without reopening its basic design.
+Further inference completeness, general iteration and state-dependent refinement proof rules, concrete parallel result types, cleanup contracts, recursion analysis, external-command contracts, and concrete filesystem refinement proofs remain future work. Functions, captures, rank-1 polymorphism, local imports, explicit sequencing, aliases, and their review views are implemented in the current stage. Finite map/fold and conditional update contracts are implemented, with selected extracted policy proofs. The complete Rust correspondence proofs and the parallel runtime remain deferred; see the assurance matrix. Scheduler implementation must preserve the accepted transition, capacity, and conditional-fairness rules without reopening its basic design.

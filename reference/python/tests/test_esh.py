@@ -251,7 +251,7 @@ class RuntimeTests(unittest.TestCase):
 class EditorServerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.process = subprocess.Popen([sys_executable(), str(esh.PROJECT / "esh.py"), "serve", "--port", "0"],
+        cls.process = subprocess.Popen([sys_executable(), str(esh.REFERENCE / "esh.py"), "serve", "--port", "0"],
                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         cls.base = cls.process.stdout.readline().strip().split(" ")[-1]
         if not cls.base.startswith("http://"):
@@ -299,7 +299,7 @@ class EditorServerTests(unittest.TestCase):
             source = '(script (import lib "./lib.esh") (lib.value))'
             (root / "entry.esh").write_text(source)
             (root / "lib.esh").write_text('(module lib (def value (export) (params) (returns Text) (effects) (body "module")))')
-            process = subprocess.Popen([sys_executable(), "-B", str(esh.PROJECT / "esh.py"), "serve", "--port", "0", "--file", str(root / "entry.esh")],
+            process = subprocess.Popen([sys_executable(), "-B", str(esh.REFERENCE / "esh.py"), "serve", "--port", "0", "--file", str(root / "entry.esh")],
                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             try:
                 base = process.stdout.readline().strip().split(" ")[-1]

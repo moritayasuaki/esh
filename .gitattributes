@@ -1,0 +1,2 @@
+# Preserve verifier output byte-for-byte, including its trailing spaces.
+verification/EshRust/Generated/*.lean linguist-generated=true whitespace=-blank-at-eol

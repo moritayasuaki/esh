@@ -1,0 +1,13 @@
+; Replace a known configuration; preserve the secrets subtree.
+(script
+  (cap workspace (read write))
+  (requires
+    (exact-text workspace "app.conf" "mode=development\nport=8080\n")
+    (directory workspace "secrets"))
+  (preserves (target workspace "secrets"))
+  (ensures (exact-text workspace "app.conf" "mode=production\nport=8080\n"))
+  (returns (Result Unit FsError))
+  (effects (fs.read workspace) (fs.write workspace))
+  (do
+    (let config (path "app.conf"))
+    (fs.write-text workspace config "mode=production\nport=8080\n")))

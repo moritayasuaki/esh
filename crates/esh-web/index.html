@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>esh · Script review</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="toolbar"><div class="brand">esh<span>Script review</span></div><div id="status" role="status">Loading Rust editor…</div><button id="download">Download source</button><button id="check" class="primary">Check script</button></header>
+  <main class="workspace">
+    <aside class="sidebar"><div class="sidebar-title">PROJECT</div><nav id="sources" aria-label="Source files"></nav><div class="sidebar-foot">Rust / WebAssembly<br>Local source snapshot<br>No script execution in this editor</div></aside>
+    <section class="editor" aria-label="Source editor"><div class="editor-title"><strong id="filename">Source</strong><span id="source-state"></span></div><div class="code-wrap"><pre id="line-numbers" aria-hidden="true"></pre><textarea id="code" spellcheck="false" autocapitalize="off" aria-label="Script source"></textarea></div></section>
+    <aside id="review" aria-label="Human review"></aside>
+  </main>
+  <script type="module" src="/bootstrap.js"></script>
+</body>
+</html>

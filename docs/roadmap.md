@@ -1,11 +1,37 @@
 # Implementation stages
 
-The source-to-checked-core-to-host path and local review editor are implemented.
-Accepted design policies and implemented syntax are distinguished below.
+The current executable application is Rust. Its browser editor runs Rust/Wasm.
+The original Lean kernel remains a separately checked reference.
 
-1. **Source functions and modules — implemented.** Required exported signatures, private inference, higher-order closures, explicit sequencing, local modules, transparent aliases, and rank-1 type/region/effect polymorphism. See [current syntax](functions.md). The solver conservatively diagnoses unsupported constraints. Source-frontend correctness and interpreter-step correspondence remain formalization work.
-2. **Structured state transitions.** Add finite iteration, general loops, recursion, and `div`. Extend the semantics and proofs to finite prefixes of potentially divergent executions.
-3. **Verified filesystem algorithms.** Specify directories, aliasing, errors, partial completion, and namespace interference. Connect abstract operations to the concrete adapter rather than treating store laws as an OS proof.
-4. **External-command contracts.** Keep an explicit unrestricted effect. Generate type-establishing validation and budgeted supplementary checks with distinct checked, violated, and incomplete outcomes.
-5. **Review tools.** Extend the current source-linked type/effect view to binding provenance, data flow, branch conditions, and explicit state transitions. Validate the views on realistic scripts before expanding syntax.
-6. **Concrete planning.** Investigate read/prepare/apply stages and reviewed change plans as a later extension. Static effect bounds remain distinct from concrete plans.
+1. **Implemented: functions, modules, and rank-1 polymorphism.** Public contracts,
+   private inference, higher-order closures, explicit authority captures,
+   `do`/`let`, static definition-only imports, and transparent shared aliases.
+2. **Implemented: first filesystem-update workflows.** Ordered finite map/fold,
+   first-error variants, Bytes/UTF-8, checked dynamic paths, initial-state inputs,
+   mandatory preflight, rechecks, protected directory subtrees, postconditions,
+   partial-change reports, and six tested workflows with fixtures.
+3. **Implemented: Rust review tools and initial extracted proofs.** Source-linked
+   file-impact review, explicit unknowns, runtime-check obligations, shared editor
+   state, Rust/Wasm rendering, and Aeneas→Lean proofs for selected policy loops
+   and decisions. The [assurance matrix](assurance.md) is authoritative.
+4. **Remaining: full Rust correspondence and filesystem refinement.** Prove the
+   source compiler/interpreter, complete path validation, update state evolution,
+   alias/preservation checks, and review projection. Connect OS assumptions to
+   the command implementation. Existing kernel theorems are not inherited by a
+   rewrite without a correspondence proof.
+5. **Later: richer automation.** General recursion/unbounded loops and divergence,
+   richer errors/data types, external-command contracts and pipelines, and
+   budgeted supplementary checks. External processes retain explicitly
+   unrestricted effects; wrappers must not erase them.
+6. **Later: native editor and concurrency.** A GPUI renderer can reuse the Rust
+   document/review model. The accepted structured-parallel/FIFO design remains
+   unchanged: shared global job budget, default one, cancel-and-join, typed
+   partial results, and no automatic rollback. Its runtime is not implemented.
+
+Finite-list behavior uses restricted `E*` in review summaries, preserving order
+inside each iteration. General user-written `mu` is deferred. Effect bounds remain
+permission projections, separate from ordered behavior and state contracts.
+
+The next proof work should close the explicit gaps in stage 4 before advertising
+the application as fully verified. OS isolation, source-level refined types, and
+external-command syntax require their own reviewed designs before implementation.

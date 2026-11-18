@@ -1,0 +1,23 @@
+; Copy each regular file to archive, then remove that source only after success.
+; This is copy-then-delete, not an atomic move. Earlier successes remain on Err.
+(script
+  (import files "./lib/files.esh")
+  (cap workspace (read write remove))
+  (requires (directory workspace "inbox") (directory workspace "archive"))
+  (returns (Result (List Unit) FsError))
+  (effects (fs.read workspace) (fs.write workspace) (fs.remove workspace))
+  (do
+    (let inbox (path "inbox"))
+    (let archive (path "archive"))
+    (let-ok names (fs.list workspace inbox))
+    (let move-one
+      (fn
+        (params name)
+        (captures workspace)
+        (body
+          (do
+            (let-ok source (path.join inbox name))
+            (let-ok destination (path.join archive name))
+            (let-ok copied (files.copy-bytes workspace source workspace destination))
+            (fs.remove workspace source)))))
+    (list.map-ok move-one names)))

@@ -39,12 +39,14 @@ including pure calls, with `let`/`let-ok`. Branch computations have their own
 that path to `fs.read-text`; nested call syntax is rejected with an ordering
 diagnostic.
 
-Paths reject absolute paths, empty components, parent components, interior dot components, backslashes, and control characters. Text is not implicitly converted into a path. Dynamic path construction is not yet implemented.
+Paths reject absolute paths, empty components, parent components, interior dot components, backslashes, and control characters. Text is not implicitly converted into a path. `(path.parse text)` returns `Result RelPath FsError`; `(path.join base component)` appends one checked component and returns the same Result type. Both are pure but must be sequenced like other calls.
 
 ## Filesystem operations
 
 | Expression | Result | Required permission | Effect |
 | --- | --- | --- | --- |
+| `(fs.read-bytes cap path)` | `Result Bytes FsError` | `read` | `fs.read region` |
+| `(fs.write-bytes cap path bytes)` | `Result Unit FsError` | `write` | `fs.write region` |
 | `(fs.read-text cap path)` | `Result Text FsError` | `read` | `fs.read region` |
 | `(fs.write-text cap path text)` | `Result Unit FsError` | `write` | `fs.write region` |
 | `(fs.list cap path)` | `Result (List Text) FsError` | `read` | `fs.read region` |
@@ -58,3 +60,34 @@ Paths reject absolute paths, empty components, parent components, interior dot c
 Reads and traversal reject symbolic links in script paths. The selected grant root is trusted configuration. See [assurance boundaries](assurance.md) for concurrent namespace mutation and OS assumptions.
 
 Errors carry a code and message. Primitive errors return typed `Err` values; they do not change the statically inferred success type. Source checking limits each file to 256 KiB, 50,000 forms, and nesting depth 128; a module graph is limited to 128 files and 4 MiB. These are implementation limits, not claims about the eventual language.
+
+## Bytes and finite collections
+
+`(utf8.encode text)` returns `Bytes`. `(utf8.decode bytes)` returns
+`Result Text FsError`, rejecting invalid UTF-8 rather than replacing characters.
+`fs.write-bytes` has the same replacement semantics as `fs.write-text`.
+
+A list literal declares its element type: `(list Text "a" "b")` or `(list Text)`.
+Elements are values, as for call arguments.
+
+| Operation | Callback | Result |
+| --- | --- | --- |
+| `(list.map callback items)` | `A → B` with Effect E | `List B` with Effect E |
+| `(list.map-ok callback items)` | `A → Result B FsError` with E | `Result (List B) FsError` with E |
+| `(list.fold callback initial items)` | `(S, A) → S` with E | `S` with E |
+| `(list.fold-ok callback initial items)` | `(S, A) → Result S FsError` with E | `Result S FsError` with E |
+
+Callbacks run in list order. Fold receives the accumulator first. The `-ok`
+variants stop at the first error, keeping earlier external changes. Empty lists
+invoke no callbacks; folds return the initial accumulator. The permission bound
+is a union while the behavior view retains repeated execution (`E*` for unknown
+finite lengths). General recursion, infinite loops, and user-written `mu` are
+not part of these operations.
+
+## Update specifications
+
+`requires`, `preserves`, and `ensures` belong to the script header. An additional
+`(state condition ...)` file can be supplied through `--state` to check, run, or
+serve. Conditions require read authority and contribute observation effects.
+See [update contracts](update-contracts.md) for the predicate grammar and runtime
+phases. Mandatory validation cannot be skipped when its budget is exhausted.

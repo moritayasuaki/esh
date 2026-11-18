@@ -1,0 +1,4 @@
+; Additional initial conditions are conjunctive with the script's requires.
+(state
+  (exact-text workspace "app.conf" "mode=development\nport=8080\n")
+  (absent workspace "maintenance.lock"))

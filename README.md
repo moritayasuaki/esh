@@ -1,106 +1,136 @@
 # esh
 
-An experimental typed S-expression scripting language for inspecting and running filesystem automation.
+A typed S-expression language for filesystem automation that a human can review
+before running. The current implementation is Rust: parser, type/effect
+inference, interpreter, internal commands, local server, and browser editor.
+Browser application logic compiles to WebAssembly; JavaScript bindings are
+build-generated.
 
-The executable uses a Lean kernel for typed functions and closures, capability values, permission-bearing requests, and effect-bound certificates. A Python frontend infers rank-1 types and loads local modules; the Lean kernel independently rechecks its executable representation. A small Python host connects requests to POSIX filesystem operations. The local editor displays checked types, effects, evaluation order, retained authority, and imported source.
+The first practical workflows cover configuration updates, batch transformations,
+file organization, backup rotation, version migrations, and manifests. Scripts
+can state the filesystem conditions they require, what they must preserve, and
+what must hold before success is reported. The viewer shows overwrite targets,
+execution conditions, repeated operations, and unresolved paths.
 
-**This is a prototype, not a complete implementation of the language design.** See [assurance boundaries](docs/assurance.md) before relying on the proofs, and [the language design](docs/design.md) for the planned language.
+**Formal verification is partial.** Actual Rust policy code is extracted with
+Charon/Aeneas and proved in Lean. The complete Rust compiler, interpreter,
+filesystem adapter, and review projection are not yet proved. The earlier Lean
+kernel remains a separate reference model. See [assurance](docs/assurance.md).
 
-## Build and test
+## Build and inspect
 
-Requirements: the Lean toolchain pinned in `lean-toolchain`, Lake, Python 3.9 or newer, and a POSIX host with descriptor-relative file operations. There are no third-party Python packages or Lean package dependencies.
+Use Rust/Cargo (tested toolchain: 1.98.1) and a POSIX host. Cargo dependencies are
+locked. No Python or Lean executable is required to run the Rust application.
 
 ```sh
-lake build
-python3 -m unittest discover -s tests -v
+cargo build --locked --release -p esh-cli
+./target/release/esh check examples/config-update.esh
+./target/release/esh check examples/config-update.esh --state examples/expected-config.state
+cargo test --locked --workspace
 ```
 
-The default build includes `Esh.Proofs`, so changes to the executable kernel also check its proof entry points. Tests use temporary directories; they include permission errors, ambiguous inference, path traversal, symlinks, hard links, UTF-8 failures, and error propagation.
+`check` parses and analyzes source and its local imports. It does not inspect the
+script's target filesystem. Declared initial conditions are premises until a run
+validates them. Reports use JSON and capability-relative paths.
 
-## Inspect a script
+## Run an update
+
+Start with a disposable fixture; choose a destination that does not already exist:
 
 ```sh
-python3 esh.py check examples/copy.esh
-python3 esh.py check examples/copy.esh --json
+mkdir -p .local/demo
+cp -R examples/fixtures/config .local/demo/config
+./target/release/esh run examples/config-update.esh \
+  --state examples/expected-config.state \
+  --grant workspace read,write .local/demo/config
 ```
 
-The example contains an explicitly registered inference candidate:
+The script replaces `workspace:/app.conf` only if the expected development
+configuration and other mandatory conditions hold. It protects the `secrets`
+directory and its entire subtree. A second run fails its old-configuration
+precondition. A declaration never grants access: callers supply roots and rights.
 
 ```lisp
 (script
-  (cap input (read write) infer)
-  (cap output (write))
+  (cap workspace (read write))
+  (requires (exact-text workspace "app.conf" "mode=development\n")
+            (directory workspace "secrets"))
+  (preserves (target workspace "secrets"))
+  (ensures (exact-text workspace "app.conf" "mode=production\n"))
   (returns (Result Unit FsError))
-  (effects (fs.read input) (fs.write output))
-
+  (effects (fs.read workspace) (fs.write workspace))
   (do
-    (let source (path "source.txt"))
-    (let target (path "copy.txt"))
-    (let-ok content (fs.read-text _ source))
-    (let decorated (text.concat "Copied by esh\n" content))
-    (fs.write-text output target decorated)))
+    (let config (path "app.conf"))
+    (fs.write-text workspace config "mode=production\n")))
 ```
 
-The checker resolves `_` to `input`, reports narrowing from `{read, write}` to `{read}`, and checks the declared effect upper bound. If multiple registered capabilities qualify, checking fails. Narrower permissions do not win a tie.
+Every mandatory initial check must pass before mutation. The runtime rechecks
+relevant conditions before each mutation and checks `ensures` before success.
+Rechecking detects drift but does not prove absence of concurrent interference.
+Failures report completed changes; there is no automatic rollback.
 
-## Run with explicit grants
+[Run all six workflows](docs/examples.md), including their failure cases.
+[Update-contract semantics](docs/update-contracts.md) explain alias roots,
+preservation, check budgets, and conditional guarantees.
 
-Capability declarations state requirements; they do not give a script access to files. The host supplies roots and permissions separately.
+## Rust/Wasm review editor
+
+Install the Wasm target and a binding generator matching the locked Rust crate:
 
 ```sh
-mkdir -p .local/demo/input .local/demo/output
-printf 'hello\n' > .local/demo/input/source.txt
-python3 esh.py run examples/copy.esh \
-  --grant input read,write .local/demo/input \
-  --grant output write .local/demo/output
+rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.130 --locked --root .local/wasm-tools
+./target/release/esh build-web
+./target/release/esh serve examples/config-update.esh --state examples/expected-config.state
 ```
 
-`let-ok` returns an error without executing its body when the bound operation fails. `write-text` replaces the entire target file. The CLI returns status 0 on success, 1 for a top-level `Err`, and 2 for a source, grant, or host setup error.
+Open the loopback address printed by `serve`. The entry buffer is editable;
+imports are read-only source snapshots. Check explicitly after edits: old review
+results are invalidated immediately. File-impact targets link to their source.
+Download saves the buffer as a source file. The editor has no script-execution
+endpoint. `--port N` changes the local port.
 
-The default file-content and directory-name payload limit is 8 MiB, configurable with `--max-bytes`. This is an operation resource limit, not the proposed budget for supplementary expectation checks.
+The editor model and review analysis are independent of the browser renderer,
+so a future GPUI interface can reuse them. This release is a browser interface.
 
-## Review editor
+## Language scope
+
+- Explicit `do`/`let` sequencing, including pure calls; `let-ok` stops on `Err`.
+- Named and anonymous higher-order functions, authority captures, rank-1
+  type/region/effect polymorphism, and mandatory exported contracts.
+- Definition-only local modules and transparent, nonrecursive type aliases.
+- Shared type substructures and a report graph with references to earlier nodes.
+- Finite `List` values, ordered `list.map`/`list.fold`, and first-error
+  `list.map-ok`/`list.fold-ok`; repeated behavior is displayed using restricted `E*`.
+- Text and byte I/O, strict UTF-8 conversion, checked dynamic paths, sorted
+  directory listing, directory creation, and regular-file removal.
+- Explicit capabilities, opt-in `_` inference, ambiguity errors, and visible
+  permission narrowing.
+
+Imports resolve relative to their importing file and stay within
+`--project-root DIR` (default: the entry file's parent). Imports cannot follow
+symlinks. Each analysis/run uses the source bytes it loaded.
+
+General recursion, unbounded loops, general `mu`, external processes/pipelines,
+OS-enforced isolation, and the agreed parallel runtime are later stages.
+See [syntax](docs/prototype.md), [functions/modules](docs/functions.md),
+[architecture](docs/architecture.md), and [roadmap](docs/roadmap.md).
+
+## Proofs and limits
 
 ```sh
-python3 esh.py serve
-# Review functions and imports with a file location:
-python3 esh.py serve --file examples/functions.esh
+scripts/extract-policy.sh --check  # requires the pinned Charon/Aeneas tools
+scripts/check-proofs.sh           # checks the extracted Rust proofs
+lake build                       # checks the separate original Lean model
 ```
 
-Open the local address printed by the command. The editor rechecks source as it changes, links review rows back to source spans, and can download the edited source. Imported files are displayed read-only. Evaluation steps, function contracts, capture inference, narrowing, and transparent aliases are visible. It has no execution endpoint. A displayed effect set covers possible operations across all branches; a callback's permission bound alone does not specify its internal order or operation count.
+[Verifier setup and exact coverage](verification/README.md) are separate from
+normal builds. The historical Python frontend/host and handwritten UI are
+retained only under [reference](reference/README.md).
 
-Imports are relative to their importing file and confined to the entry file's directory by default. Set `--project-root DIR` on `check`, `run`, or `serve` to choose a different boundary. Importing loads definitions without calling their bodies. Each check/run retains the source bytes it checked.
-
-## Functions and modules
-
-```lisp
-(module functions
-  (def apply
-    (export)
-    (forall (A Type) (B Type) (E Effect))
-    (params (callback (Fn (A) B (effects E))) (value A))
-    (returns B)
-    (effects E)
-    (body (callback value))))
-```
-
-Private functions may infer their signatures. Exported functions require complete contracts and are checked even when unused. Closures declare authority captures with `(captures root callback)` or request an expansion with `(captures _)`. Calls provide all arguments; partial application uses an explicit `fn`. Intermediate calls, including pure calls, require `let` or `let-ok`.
-
-See [the module example](examples/functions.esh), its [library](examples/lib/io.esh), and [function and module syntax](docs/functions.md).
-
-## Implemented in this slice
-
-- `Unit`, `Bool`, `Text`, `RelPath`, `List T`, `Result T FsError`, capabilities, and function values.
-- Named/anonymous higher-order functions, explicit captures, and rank-1 type/region/effect polymorphism.
-- Static local modules with required public contracts, definition-only imports, and acyclic forward references.
-- Transparent nonrecursive type aliases and a shared type representation.
-- Explicit `do`/`let` sequencing, conditionals, text operations, and `Result` propagation.
-- Explicit capability arguments, opt-in inference candidates, ambiguity errors, and narrowing explanations.
-- Optional script result/effect annotations, checked against inferred results.
-- Text reads and replacement writes, directory listing/creation, and regular-file removal.
-- Kernel-checked request effect bounds, authorization, pure traces, and capability restriction laws.
-- Abstract file-content store laws, explicitly separate from concrete OS correctness.
-
-Explicit-state loops, general recursion, `div`, restricted effect iteration, the parallel runtime, external commands, and generated runtime contracts are **not implemented yet**. Their accepted design policies remain in force. Inference is conservative: unsupported effect constraints require annotations rather than guessed partitions or unrestricted effects.
-
-See [prototype syntax](docs/prototype.md) and [implementation stages](docs/roadmap.md).
+CLI limits: `--max-bytes` (default 8 MiB per operation/value), `--max-steps`
+(1,000,000 semantic checkpoints), `--max-checks` (100,000 observations), and
+`--max-check-bytes` (64 MiB cumulative checked content). Mandatory validation
+that exceeds its budget blocks the update. These limits are not a whole-process
+memory bound or an OS-operation timeout. Exit status is 0 for success, 1 for an
+execution/contract failure, and 2 for source or setup errors.

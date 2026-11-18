@@ -1,3 +1,9 @@
+> Implementation update: Rust now implements ordered finite map/fold, first-error
+> variants, Bytes/dynamic paths, and conditional filesystem update contracts.
+> Restricted E* is used in finite-repetition review summaries. The parallel
+> runtime and general fixed points remain future work. Current details:
+> [syntax](prototype.md), [contracts](update-contracts.md), [assurance](assurance.md).
+
 # Function and effect design notes
 
 The function stage implements higher-order functions, rank-1 type/region/effect
@@ -7,7 +13,7 @@ structure remains separate. See [current syntax](functions.md) and
 [implementation decisions](functions-implementation-plan.md).
 
 The notes below retain the rationale and future design candidates. Restricted
-iteration, conditional guarantees, and the parallel runtime remain future work.
+general iteration, dependent refinements, and the parallel runtime remain future work.
 Concurrency policy is accepted and is not reopened by this implementation. The
 language's commitments are recorded in [the design](design.md).
 
@@ -125,7 +131,7 @@ The trace example is a choice of semantic model, not an iteration law assumed fo
 
 Existence of a semantic fixed point is not a terminating inference algorithm. General recursive trace equations can describe context-free languages, whose unrestricted inclusion problem is undecidable; [language-inclusion research](https://ris.utwente.nl/ws/files/28131311/1997ctit31.tr.pdf) contrasts this with regular-language inclusion. Positive or monotone recursion supports the semantic construction but does not alone settle inclusion checking. Supported inference would need a restricted fragment, suitable abstractions or proof certificates, or annotations when it cannot establish the necessary bound. It must not silently replace unresolved behavior with unrestricted effects.
 
-Named/shared expressions followed by restricted iteration are the accepted direction; the semantic model and inference rules above still need design and proof. General recursion and iteration remain in the existing later implementation stage. A recursive error-data structure, if needed, is a separate type-design problem: an effect fixed-point operator does not automatically simplify a heterogeneous partial-result record.
+Named/shared expressions and restricted finite-list iteration are implemented. The general semantic model and inference rules above still need proof; general recursion and unbounded iteration remain in a later stage. A recursive error-data structure, if needed, is a separate type-design problem: an effect fixed-point operator does not automatically simplify a heterogeneous partial-result record.
 
 ## Explicit sequencing
 
@@ -149,7 +155,9 @@ Calls require full arity. Partial application uses an explicit `fn`; there is no
 
 ## Filesystem-state refinement
 
-Under review: supplement the unconditional effect contract with conditional facts about a particular execution. A fact may describe validated input data, file kind, a snapshot, or a relationship between resolved locations. Such facts can narrow branches and establish operation preconditions. They do not grant capabilities, remove the effect of an operation that still executes, or establish success of every later OS call.
+Accepted basic model: supply a partial description of required initial filesystem conditions, use it with the script to check and review changes, preservation requirements, and successful postconditions, and validate mandatory initial conditions before mutation. Unmentioned facts remain unknown; mismatches and incomplete mandatory validation prevent the update from starting. See [update contracts](update-contracts.md). Predicate syntax and interference handling remain under review.
+
+A fact may describe validated input data, file kind, a snapshot, or a relationship between resolved locations. Such facts can narrow branches and establish operation preconditions. They do not grant capabilities, remove the effect of an operation that still executes, or establish success of every later OS call.
 
 An observation about a live pathname has a lifetime. A later check/use sequence can race with another process; the [Python OS documentation](https://docs.python.org/3/library/os.html#os.access) describes this issue for permission checks. Rechecking immediately before an operation does not remove the intervening race. Evidence must be tied to an appropriate mechanism: immutable data actually used by the computation, a suitable snapshot, an atomic operation that both checks and acts, or a justified exclusion of interfering changes. An open descriptor identifies an opened object but does not by itself freeze its contents.
 

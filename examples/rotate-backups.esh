@@ -1,0 +1,20 @@
+; Read both generations before replacing either target.
+; Only completed replacements are reported if a later operation fails.
+(script
+  (cap workspace (read write))
+  (requires (regular-file workspace "current.bin")
+            (regular-file workspace "backup.1.bin")
+            (regular-file workspace "backup.2.bin"))
+  (preserves (target workspace "current.bin"))
+  (ensures (regular-file workspace "backup.1.bin")
+           (regular-file workspace "backup.2.bin"))
+  (returns (Result Unit FsError))
+  (effects (fs.read workspace) (fs.write workspace))
+  (do
+    (let current (path "current.bin"))
+    (let first (path "backup.1.bin"))
+    (let second (path "backup.2.bin"))
+    (let-ok current-bytes (fs.read-bytes workspace current))
+    (let-ok first-bytes (fs.read-bytes workspace first))
+    (let-ok rotated (fs.write-bytes workspace second first-bytes))
+    (fs.write-bytes workspace first current-bytes)))

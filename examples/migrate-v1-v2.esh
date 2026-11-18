@@ -1,0 +1,17 @@
+; Publish the version marker only after the new settings have been written.
+; External readers need the stated non-interference protocol; this is not a transaction.
+(script
+  (cap workspace (read write))
+  (requires (exact-text workspace "VERSION" "1\n")
+            (exact-text workspace "settings.conf" "format=legacy\n")
+            (directory workspace "data"))
+  (preserves (target workspace "data"))
+  (ensures (exact-text workspace "VERSION" "2\n")
+           (exact-text workspace "settings.conf" "format=current\n"))
+  (returns (Result Unit FsError))
+  (effects (fs.read workspace) (fs.write workspace))
+  (do
+    (let settings (path "settings.conf"))
+    (let version (path "VERSION"))
+    (let-ok updated (fs.write-text workspace settings "format=current\n"))
+    (fs.write-text workspace version "2\n")))

@@ -1,0 +1,20 @@
+; Accumulate a deterministic text manifest from a sorted directory listing.
+(script
+  (cap workspace (read write))
+  (requires (directory workspace "input") (absent workspace "manifest.txt"))
+  (preserves (target workspace "input"))
+  (ensures (regular-file workspace "manifest.txt"))
+  (returns (Result Unit FsError))
+  (effects (fs.read workspace) (fs.write workspace))
+  (def append-line
+    (params accumulated name)
+    (body
+      (do
+        (let line (text.concat name "\n"))
+        (text.concat accumulated line))))
+  (do
+    (let input (path "input"))
+    (let output (path "manifest.txt"))
+    (let-ok names (fs.list workspace input))
+    (let contents (list.fold append-line "" names))
+    (fs.write-text workspace output contents)))
