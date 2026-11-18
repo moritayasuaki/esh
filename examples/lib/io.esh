@@ -1,0 +1,26 @@
+(module io
+  (type Outcome
+    (export)
+    (forall (A Type))
+    (alias (Result A FsError)))
+
+  ; Creating a reader retains read authority but performs no read.
+  (def make-reader
+    (export)
+    (forall (R Region))
+    (params (root (Cap R (read))))
+    (returns (Fn (RelPath) (Outcome Text) (effects (fs.read R))))
+    (effects)
+    (body
+      (fn
+        (params path)
+        (captures root)
+        (body (fs.read-text root path)))))
+
+  (def apply
+    (export)
+    (forall (A Type) (B Type) (E Effect))
+    (params (callback (Fn (A) B (effects E))) (value A))
+    (returns B)
+    (effects E)
+    (body (callback value))))

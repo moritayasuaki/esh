@@ -49,30 +49,30 @@ class FrontendTests(unittest.TestCase):
         self.diagnostic(script('"a"', '(returns Bool)'), "return-type")
 
     def test_both_branch_effects(self):
-        source = script('(if false (fs.write-text out (path "x") "data") (ok unit))', '(cap out (write))')
+        source = script('(do (let p (path "x")) (if false (do (fs.write-text out p "data")) (do (ok unit))))', '(cap out (write))')
         report = self.check(source)
         self.assertEqual(report["effects"], [{"region": "out", "operation": "fs.write"}])
 
     def test_effect_annotation_is_upper_bound(self):
-        self.diagnostic(script('(fs.write-text out (path "x") "data")', '(cap out (write)) (effects)'), "effect-bound")
+        self.diagnostic(script('(do (let p (path "x")) (fs.write-text out p "data"))', '(cap out (write)) (effects)'), "effect-bound")
         self.assertTrue(self.check(script('(ok unit)', '(cap out (write)) (effects (fs.write out))'))["ok"])
 
     def test_unregistered_capability_is_not_inferred(self):
-        self.diagnostic(script('(fs.read-text _ (path "x"))', '(cap input (read))'), "capability-missing")
+        self.diagnostic(script('(do (let p (path "x")) (fs.read-text _ p))', '(cap input (read))'), "capability-missing")
 
     def test_inference_and_narrowing_are_reported(self):
-        report = self.check(script('(fs.read-text _ (path "x"))', '(cap input (read write) infer)'))
+        report = self.check(script('(do (let p (path "x")) (fs.read-text _ p))', '(cap input (read write) infer)'))
         node = next(n for n in report["nodes"] if n["kind"] == "fs.read-text")
         self.assertTrue(node["details"]["inferred"])
         self.assertTrue(node["details"]["narrowed"])
         self.assertEqual(node["details"]["required"], ["read"])
 
     def test_ambiguity_has_no_least_permission_preference(self):
-        source = script('(fs.read-text _ (path "x"))', '(cap a (read) infer) (cap b (read write) infer)')
+        source = script('(do (let p (path "x")) (fs.read-text _ p))', '(cap a (read) infer) (cap b (read write) infer)')
         self.diagnostic(source, "capability-ambiguous")
 
     def test_permission_cannot_be_amplified(self):
-        self.diagnostic(script('(fs.write-text a (path "x") "data")', '(cap a (read))'), "permission-denied")
+        self.diagnostic(script('(do (let p (path "x")) (fs.write-text a p "data"))', '(cap a (read))'), "permission-denied")
 
     def test_paths_are_distinct_from_text(self):
         self.diagnostic(script('(fs.read-text a "x")', '(cap a (read))'), "type-mismatch")
@@ -144,7 +144,7 @@ class RuntimeTests(unittest.TestCase):
         self.assertFalse((self.output / "copy.txt").exists())
 
     def test_trace_keeps_repeated_requests(self):
-        source = script('(let-ok first (fs.write-text output (path "x") "one") (fs.write-text output (path "x") "two"))', '(cap output (write))')
+        source = script('(do (let p (path "x")) (let-ok first (fs.write-text output p "one")) (fs.write-text output p "two"))', '(cap output (write))')
         code, report = self.run_source(source)
         self.assertEqual(code, 0)
         self.assertEqual(report["traceLength"], 2)
@@ -152,14 +152,14 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual((self.output / "x").read_text(), "two")
 
     def test_skipped_branch_has_no_request(self):
-        source = script('(if false (fs.write-text output (path "x") "changed") (ok unit))', '(cap output (write))')
+        source = script('(do (let p (path "x")) (if false (do (fs.write-text output p "changed")) (do (ok unit))))', '(cap output (write))')
         code, report = self.run_source(source)
         self.assertEqual(code, 0)
         self.assertEqual(report["traceLength"], 0)
         self.assertFalse((self.output / "x").exists())
 
     def test_no_grants_no_write(self):
-        source = script('(fs.write-text output (path "x") "changed")', '(cap output (write))')
+        source = script('(do (let p (path "x")) (fs.write-text output p "changed"))', '(cap output (write))')
         with self.assertRaises(esh.OperationError):
             self.run_source(source, [])
         self.assertFalse((self.output / "x").exists())
@@ -175,13 +175,13 @@ class RuntimeTests(unittest.TestCase):
         outside = self.root / "outside.txt"
         outside.write_text("private")
         (self.input / "link").symlink_to(outside)
-        code, report = self.run_source(script('(fs.read-text input (path "link"))', '(cap input (read))'))
+        code, report = self.run_source(script('(do (let p (path "link")) (fs.read-text input p))', '(cap input (read))'))
         self.assertEqual(code, 1)
         self.assertIn("error", report["value"])
 
     def test_symlink_directory_rejected(self):
         (self.input / "other").symlink_to(self.output, target_is_directory=True)
-        source = script('(fs.write-text input (path "other/x") "changed")', '(cap input (write))')
+        source = script('(do (let p (path "other/x")) (fs.write-text input p "changed"))', '(cap input (write))')
         code, _ = self.run_source(source)
         self.assertEqual(code, 1)
         self.assertFalse((self.output / "x").exists())
@@ -190,21 +190,21 @@ class RuntimeTests(unittest.TestCase):
         outside = self.root / "outside.txt"
         outside.write_text("original")
         os.link(outside, self.output / "target")
-        code, report = self.run_source(script('(fs.write-text output (path "target") "new")', '(cap output (write))'))
+        code, report = self.run_source(script('(do (let p (path "target")) (fs.write-text output p "new"))', '(cap output (write))'))
         self.assertEqual(code, 0, report)
         self.assertEqual(outside.read_text(), "original")
         self.assertEqual((self.output / "target").read_text(), "new")
         self.assertFalse(list(self.output.glob(".esh-*")))
 
     def test_aliasing_regions_are_allowed(self):
-        source = script('(let-ok ignored (fs.write-text a (path "x") "shared") (fs.read-text b (path "x")))',
+        source = script('(do (let p (path "x")) (let-ok ignored (fs.write-text a p "shared")) (fs.read-text b p))',
                         '(cap a (write)) (cap b (read))')
         code, report = self.run_source(source, [["a", "write", str(self.output)], ["b", "read", str(self.output)]])
         self.assertEqual(code, 0)
         self.assertEqual(report["value"], {"ok": "shared"})
 
     def test_directory_operations(self):
-        source = script('(let-ok created (fs.mkdir output (path "sub")) (fs.list output (path ".")))',
+        source = script('(do (let sub (path "sub")) (let root (path ".")) (let-ok created (fs.mkdir output sub)) (fs.list output root))',
                         '(cap output (mkdir read))')
         code, report = self.run_source(source)
         self.assertEqual(code, 0)
@@ -212,11 +212,11 @@ class RuntimeTests(unittest.TestCase):
 
     def test_remove_requires_regular_file(self):
         (self.output / "x").write_text("remove me")
-        code, _ = self.run_source(script('(fs.remove output (path "x"))', '(cap output (remove))'))
+        code, _ = self.run_source(script('(do (let p (path "x")) (fs.remove output p))', '(cap output (remove))'))
         self.assertEqual(code, 0)
         self.assertFalse((self.output / "x").exists())
         (self.output / "folder").mkdir()
-        code, _ = self.run_source(script('(fs.remove output (path "folder"))', '(cap output (remove))'))
+        code, _ = self.run_source(script('(do (let p (path "folder")) (fs.remove output p))', '(cap output (remove))'))
         self.assertEqual(code, 1)
         self.assertTrue((self.output / "folder").is_dir())
 
@@ -239,8 +239,9 @@ class RuntimeTests(unittest.TestCase):
 
     def test_ill_typed_host_reply_is_rejected(self):
         file = self.root / "protocol.esh"
-        file.write_text(script('(fs.read-text input (path "x"))', '(cap input (read))'))
-        process = subprocess.run([str(esh.CORE), "run", str(file)], input='{"ok": 123}\n',
+        file.write_text(script('(do (let p (path "x")) (fs.read-text input p))', '(cap input (read))'))
+        bundle = esh.elaborate(file.read_text(), file)
+        process = subprocess.run([str(esh.CORE), "run-ir"], input=json.dumps(bundle) + '\n{"ok": 123}\n',
                                  text=True, capture_output=True, timeout=10)
         final = json.loads(process.stdout.splitlines()[-1])
         self.assertEqual(process.returncode, 1)
@@ -284,6 +285,33 @@ class EditorServerTests(unittest.TestCase):
         with self.assertRaises(HTTPError) as error:
             urlopen(request, timeout=5)
         self.assertEqual(error.exception.code, 403)
+
+    def test_import_without_entry_context_is_reported(self):
+        request = Request(self.base + "/analyze", data=b'(script (import lib "./lib.esh") unit)',
+                          headers={"Origin": self.base}, method="POST")
+        with urlopen(request, timeout=5) as response:
+            report = json.load(response)
+        self.assertEqual(report["diagnostic"]["code"], "import-context")
+
+    def test_module_editor_uses_its_configured_file_context(self):
+        with tempfile.TemporaryDirectory(prefix="esh-editor-") as directory:
+            root = Path(directory)
+            source = '(script (import lib "./lib.esh") (lib.value))'
+            (root / "entry.esh").write_text(source)
+            (root / "lib.esh").write_text('(module lib (def value (export) (params) (returns Text) (effects) (body "module")))')
+            process = subprocess.Popen([sys_executable(), "-B", str(esh.PROJECT / "esh.py"), "serve", "--port", "0", "--file", str(root / "entry.esh")],
+                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            try:
+                base = process.stdout.readline().strip().split(" ")[-1]
+                self.assertTrue(base.startswith("http://"))
+                request = Request(base + "/analyze", data=source.encode(), headers={"Origin": base}, method="POST")
+                with urlopen(request, timeout=5) as response:
+                    report = json.load(response)
+                self.assertTrue(report["ok"], report)
+                self.assertEqual({s["name"] for s in report["sources"]}, {"entry.esh", "lib.esh"})
+            finally:
+                process.terminate()
+                process.communicate(timeout=5)
 
 
 def sys_executable():

@@ -1,0 +1,15 @@
+; Inspect the imported definitions and retained authority in the review editor.
+(script
+  (import io "./lib/io.esh")
+  (cap input (read write))
+  (cap output (write))
+  (returns (Result Unit FsError))
+  (effects (fs.read input) (fs.write output))
+
+  (do
+    (let read (io.make-reader input))
+    (let source (path "source.txt"))
+    (let target (path "copy.txt"))
+    (let-ok content (io.apply read source))
+    (let decorated (text.concat "Copied by esh\n" content))
+    (fs.write-text output target decorated)))

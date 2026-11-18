@@ -5,6 +5,9 @@
   (returns (Result Unit FsError))
   (effects (fs.read input) (fs.write output))
 
-  (let-ok content (fs.read-text _ (path "source.txt"))
-    (fs.write-text output (path "copy.txt")
-      (text.concat "Copied by esh\n" content))))
+  (do
+    (let source (path "source.txt"))
+    (let target (path "copy.txt"))
+    (let-ok content (fs.read-text _ source))
+    (let decorated (text.concat "Copied by esh\n" content))
+    (fs.write-text output target decorated)))

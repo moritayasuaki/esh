@@ -4,7 +4,11 @@
   (returns (Result Unit FsError))
   (effects (fs.read workspace) (fs.write workspace))
 
-  (let-ok mode (fs.read-text workspace (path "mode.txt"))
-    (if (text.eq mode "write")
-      (fs.write-text workspace (path "result.txt") "enabled\n")
-      (ok unit))))
+  (do
+    (let mode-path (path "mode.txt"))
+    (let target (path "result.txt"))
+    (let-ok mode (fs.read-text workspace mode-path))
+    (let enabled (text.eq mode "write"))
+    (if enabled
+      (do (fs.write-text workspace target "enabled\n"))
+      (do (ok unit)))))

@@ -1,6 +1,6 @@
 # Prototype syntax
 
-Version 0.1 accepts one `(script ... expression)` form. S-expressions use parentheses, JSON-style quoted strings, and semicolon line comments. Spans use one-based Unicode character columns and an exclusive end position. Source text is retained verbatim for the editor; no formatter rewrites it.
+Version 0.2 accepts one `(script ... expression)` or definition-only `(module name ...)` form per file. S-expressions use parentheses, JSON-style quoted strings, and semicolon line comments. Spans use one-based Unicode character columns and an exclusive end position. Source text is retained verbatim for the editor; no formatter rewrites it. See [functions and modules](functions.md) for declarations, polymorphism, aliases, captures, and imports.
 
 ## Declarations
 
@@ -13,7 +13,7 @@ Version 0.1 accepts one `(script ... expression)` form. S-expressions use parent
 
 Declarations precede the single body expression. Permission subsets are allowed. Capability names and permissions must be unique within their declarations. `infer` registers that capability as a candidate; `_` is a marker at a capability argument position. It is not a general term-synthesis request.
 
-The `returns` and `effects` declarations are optional for this script-only prototype. An effect annotation is an upper bound and may contain unused effects. It cannot mention undeclared authority. Exported functions and their mandatory signatures are not yet available.
+Script `returns` and `effects` declarations are optional. An effect annotation is an upper bound and may contain unused effects. It cannot mention undeclared regions. Exported functions require complete type and effect signatures.
 
 ## Expressions
 
@@ -24,6 +24,7 @@ The `returns` and `effects` declarations are optional for this script-only proto
 | `(path "relative/name")` | Validated relative path; `"."` denotes the root |
 | `(let name value body)` | Evaluate value, then body with a binding |
 | `(let-ok name result body)` | Evaluate body only for `Ok`; body must also return `Result` |
+| `(do (let name value) ... final)` | Explicit sequential binding steps and a final computation |
 | `(if condition yes no)` | Boolean condition and equally typed branches |
 | `(text.concat a b)` | Concatenate two texts |
 | `(text.eq a b)` | Compare two texts |
@@ -31,6 +32,12 @@ The `returns` and `effects` declarations are optional for this script-only proto
 | `(error T "message")` | Construct a user error with success type `T` |
 
 `let-ok` is lexical composition, not a hidden jump out of an arbitrary caller. `let` does not implicitly handle or propagate a `Result`. Bindings may shadow earlier local bindings, but cannot use capability names or reserved literal names.
+
+Callees, arguments, and conditional tests are values. Bind intermediate calls,
+including pure calls, with `let`/`let-ok`. Branch computations have their own
+`do` or lexical-binding blocks. For example, bind `(path "file")` before passing
+that path to `fs.read-text`; nested call syntax is rejected with an ordering
+diagnostic.
 
 Paths reject absolute paths, empty components, parent components, interior dot components, backslashes, and control characters. Text is not implicitly converted into a path. Dynamic path construction is not yet implemented.
 
@@ -50,4 +57,4 @@ Paths reject absolute paths, empty components, parent components, interior dot c
 
 Reads and traversal reject symbolic links in script paths. The selected grant root is trusted configuration. See [assurance boundaries](assurance.md) for concurrent namespace mutation and OS assumptions.
 
-Errors carry a code and message. Primitive errors return typed `Err` values; they do not change the statically inferred success type. Source checking limits input to 256 KiB, 50,000 tokens, and nesting depth 128. These are implementation limits, not claims about the eventual language.
+Errors carry a code and message. Primitive errors return typed `Err` values; they do not change the statically inferred success type. Source checking limits each file to 256 KiB, 50,000 forms, and nesting depth 128; a module graph is limited to 128 files and 4 MiB. These are implementation limits, not claims about the eventual language.

@@ -13,6 +13,7 @@ import secrets
 import stat
 import subprocess
 import sys
+from esh_language import Diagnostic, elaborate
 
 PROJECT = Path(__file__).resolve().parent
 CORE = PROJECT / ".lake" / "build" / "bin" / "esh-core"
@@ -32,14 +33,19 @@ def require_core() -> None:
         raise OperationError("build-required", "Run 'lake build' first.")
 
 
-def analyze(source: str) -> dict:
+def analyze(source: str, file: Path | None = None, project_root: Path | None = None) -> dict:
     require_core()
     if len(source.encode("utf-8")) > MAX_SOURCE:
         return {"ok": False, "error": "Source exceeds 256 KiB."}
     try:
-        result = subprocess.run([str(CORE), "check-stdin"], input=source,
+        bundle = elaborate(source, file, project_root)
+        result = subprocess.run([str(CORE), "check-ir"], input=json.dumps(bundle, ensure_ascii=False),
                                 capture_output=True, text=True, encoding="utf-8", timeout=20)
         return json.loads(result.stdout)
+    except Diagnostic as error:
+        return error.report()
+    except RecursionError:
+        return {"ok": False, "error": "Static analysis exceeded its structural depth limit."}
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": "Static analysis exceeded its time limit."}
     except (ValueError, UnicodeError):
@@ -196,15 +202,24 @@ class Host:
             return {"error": {"code": "protocol", "message": "Malformed host request."}}
 
 
-def execute(file: Path, grants: list[list[str]], max_bytes: int) -> tuple[int, dict]:
+def execute(file: Path, grants: list[list[str]], max_bytes: int,
+            project_root: Path | None = None) -> tuple[int, dict]:
     require_core()
+    try:
+        bundle = elaborate(file.read_text(encoding="utf-8"), file, project_root)
+    except Diagnostic as error:
+        return 2, error.report()
+    except RecursionError:
+        return 2, {"ok": False, "error": "Static analysis exceeded its structural depth limit."}
     host = Host(grants, max_bytes)
     process = None
     final = None
     ready = False
     try:
-        process = subprocess.Popen([str(CORE), "run", str(file)], stdin=subprocess.PIPE,
+        process = subprocess.Popen([str(CORE), "run-ir"], stdin=subprocess.PIPE,
                                    stdout=subprocess.PIPE, text=True, encoding="utf-8")
+        process.stdin.write(json.dumps(bundle, ensure_ascii=False) + "\n")
+        process.stdin.flush()
         for line in process.stdout:
             message = json.loads(line)
             if message.get("kind") == "ready" and not ready:
@@ -237,7 +252,8 @@ def print_analysis(report: dict) -> int:
     if not report.get("ok"):
         diagnostic = report.get("diagnostic", {})
         where = diagnostic.get("span", {})
-        print(f"{where.get('line', '?')}:{where.get('column', '?')}: "
+        print(f"{diagnostic.get('source', report.get('entry', '<buffer>'))}:"
+              f"{where.get('line', '?')}:{where.get('column', '?')}: "
               f"{diagnostic.get('code', 'error')}: {diagnostic.get('message', report.get('error'))}")
         return 2
     print("Type: " + report["type"])
@@ -252,12 +268,13 @@ def print_analysis(report: dict) -> int:
             notes.append("inferred _ -> " + d["region"])
         if d["narrowed"]:
             notes.append("rights {" + ", ".join(d["granted"]) + "} -> {" + ", ".join(d["required"]) + "}")
-        print(f"  line {node['span']['line']}: {node['kind']} [{d['region']}]"
+        print(f"  {node.get('source', report.get('entry', '<buffer>'))}:"
+              f"{node['span']['line']}:{node['span']['column']}: {node['kind']} [{d['region']}]"
               + ("; " + "; ".join(notes) if notes else ""))
     return 0
 
 
-def serve(port: int) -> None:
+def serve(port: int, file: Path | None = None, project_root: Path | None = None) -> None:
     require_core()
 
     class Handler(BaseHTTPRequestHandler):
@@ -283,7 +300,7 @@ def serve(port: int) -> None:
             if self.path == "/":
                 return self.send(200, (PROJECT / "ui" / "index.html").read_bytes(), "text/html; charset=utf-8")
             if self.path == "/example":
-                return self.send(200, (PROJECT / "examples" / "copy.esh").read_bytes(), "text/plain; charset=utf-8")
+                return self.send(200, (file or PROJECT / "examples" / "copy.esh").read_bytes(), "text/plain; charset=utf-8")
             self.send(404, b"Not found", "text/plain")
 
         def do_POST(self):
@@ -296,7 +313,7 @@ def serve(port: int) -> None:
                 if length < 0 or length > MAX_SOURCE:
                     return self.send(413, b"Source too large", "text/plain")
                 source = self.rfile.read(length).decode("utf-8")
-                payload = json.dumps(analyze(source), ensure_ascii=False).encode("utf-8")
+                payload = json.dumps(analyze(source, file, project_root), ensure_ascii=False).encode("utf-8")
                 self.send(200, payload, "application/json; charset=utf-8")
             except (ValueError, UnicodeError):
                 self.send(400, b"Invalid input", "text/plain")
@@ -317,25 +334,29 @@ def main() -> int:
     check = commands.add_parser("check", help="Analyze a script without executing it")
     check.add_argument("file", type=Path)
     check.add_argument("--json", action="store_true")
+    check.add_argument("--project-root", type=Path, help="Import boundary; defaults to the entry file's directory")
     run = commands.add_parser("run", help="Run using explicitly granted filesystem roots")
     run.add_argument("file", type=Path)
     run.add_argument("--grant", nargs=3, action="append", default=[], metavar=("NAME", "PERMISSIONS", "DIRECTORY"))
     run.add_argument("--max-bytes", type=int, default=8 * 1024 * 1024)
+    run.add_argument("--project-root", type=Path, help="Import boundary; defaults to the entry file's directory")
     review = commands.add_parser("serve", help="Open a local analysis-only editor service")
     review.add_argument("--port", type=int, default=8765)
+    review.add_argument("--file", type=Path, help="Entry-file context for reviewing local imports")
+    review.add_argument("--project-root", type=Path, help="Import boundary; defaults to the entry file's directory")
     args = parser.parse_args()
     try:
         if args.command == "check":
-            report = analyze(args.file.read_text(encoding="utf-8"))
+            report = analyze(args.file.read_text(encoding="utf-8"), args.file, args.project_root)
             if args.json:
                 print(json.dumps(report, ensure_ascii=False, indent=2))
                 return 0 if report.get("ok") else 2
             return print_analysis(report)
         if args.command == "run":
-            code, result = execute(args.file, args.grant, args.max_bytes)
+            code, result = execute(args.file, args.grant, args.max_bytes, args.project_root)
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return code
-        serve(args.port)
+        serve(args.port, args.file, args.project_root)
         return 0
     except (OperationError, OSError, ValueError) as e:
         print(f"esh: {e}", file=sys.stderr)
